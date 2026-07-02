@@ -1,4 +1,7 @@
+import os
 import torch
+
+from huggingface_hub import login
 
 from transformers import (
     AutoProcessor,
@@ -6,35 +9,43 @@ from transformers import (
     SamProcessor,
     SamModel,
 )
+
 from diffusers import (
     StableDiffusionInstructPix2PixPipeline,
     StableDiffusionInpaintPipeline,
 )
+
 from simple_lama_inpainting import SimpleLama
 
-device = "cpu"
+
+# Авторизация (если передан токен)
+token = os.getenv("HF_TOKEN")
+if token:
+    login(token)
+
+print(f"HF cache: {os.environ.get('HF_HOME')}")
 
 print("Downloading Grounding DINO...")
-processor = AutoProcessor.from_pretrained(
+AutoProcessor.from_pretrained(
     "IDEA-Research/grounding-dino-base"
 )
 
-model = AutoModelForZeroShotObjectDetection.from_pretrained(
+AutoModelForZeroShotObjectDetection.from_pretrained(
     "IDEA-Research/grounding-dino-base"
 )
-del processor
-del model
+
+print("✓ Grounding DINO")
 
 print("Downloading SAM...")
-processor = SamProcessor.from_pretrained(
+SamProcessor.from_pretrained(
     "facebook/sam-vit-base"
 )
 
-model = SamModel.from_pretrained(
+SamModel.from_pretrained(
     "facebook/sam-vit-base"
 )
-del processor
-del model
+
+print("✓ SAM")
 
 print("Downloading InstructPix2Pix...")
 pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
@@ -45,7 +56,9 @@ pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
 )
 del pipe
 
-print("Downloading SD2 Inpainting...")
+print("✓ InstructPix2Pix")
+
+print("Downloading Stable Diffusion 2 Inpainting...")
 pipe = StableDiffusionInpaintPipeline.from_pretrained(
     "sd2-community/stable-diffusion-2-inpainting",
     torch_dtype=torch.float16,
@@ -55,8 +68,12 @@ pipe = StableDiffusionInpaintPipeline.from_pretrained(
 )
 del pipe
 
+print("✓ SD2 Inpainting")
+
 print("Downloading LaMa...")
 lama = SimpleLama(device=torch.device("cpu"))
 del lama
 
-print("All models downloaded.")
+print("✓ LaMa")
+
+print("\nAll models are cached.")

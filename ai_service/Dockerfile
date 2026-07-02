@@ -37,7 +37,6 @@ ARG HF_TOKEN
 ENV HF_TOKEN=$HF_TOKEN
 
 COPY download_models.py .
-RUN python download_models.py
 
 COPY . .
 
