@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  ai_service:
+    build:
+      context: ./ai_service
+      args:
+        HF_TOKEN: ${HF_TOKEN}
+    container_name: ai_image_studio_ai_service
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - HOME=/app  # Теперь все конфиги и кэши полетят в /app/.deepface
+    volumes:
+      # Весь сервис совместимости, включая веса и логику
+      - ./ai_service:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
