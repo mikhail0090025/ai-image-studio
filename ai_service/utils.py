@@ -4,7 +4,7 @@ import torchvision.transforms.functional as TF
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
-import tqdm.notebook as tqdm
+from tqdm.auto import tqdm
 
 from models import lama, processor, model, sam_processor, sam_model, pipe, sdxl_inpainting_pipeline
 
