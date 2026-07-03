@@ -15,12 +15,12 @@ services:
 
     environment:
       - HOME=/app
-      - HF_HOME=/models/huggingface
-      - TRANSFORMERS_CACHE=/models/huggingface
+      - HF_HOME=/app/models/huggingface
+      - TRANSFORMERS_CACHE=/app/models/huggingface
 
     volumes:
       - ./ai_service:/app
-      - ./models:/models
+      - ./ai_service/models:/app/models
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

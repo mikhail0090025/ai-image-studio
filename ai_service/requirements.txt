@@ -11,3 +11,4 @@ torchao>=0.16.0
 simple-lama-inpainting
 controlnet_aux
 accelerate>=1.0.0
+matplotlib>=3.7.0

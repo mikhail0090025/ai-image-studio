@@ -17,7 +17,7 @@ from simple_lama_inpainting import SimpleLama
 
 
 # Важно: указываем общий кэш HuggingFace
-CACHE_DIR = "/models/huggingface"
+CACHE_DIR = "/app/models/huggingface"
 
 os.environ["HF_HOME"] = CACHE_DIR
 os.environ["TRANSFORMERS_CACHE"] = CACHE_DIR

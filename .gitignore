@@ -1,2 +1,7 @@
 /models
 /ai_service/.cache
+.env
+ai_service/.bash_history
+*.pyc
+/ai_service/models
+__pycache__
