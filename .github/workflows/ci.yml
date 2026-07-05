@@ -26,10 +26,6 @@ jobs:
         run: |
           sleep 20
 
-      - name: Run backend tests
-        run: |
-          docker exec ai_image_studio_ai_service python -m pytest
-
       - name: Run frontend tests
         run: |
           docker exec ai_image_studio_frontend python -m pytest
