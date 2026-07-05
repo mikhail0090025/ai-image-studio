@@ -1,0 +1,549 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<style>
+.editor-layout {
+  display: flex;
+  height: 100vh;
+  background: #0f1115;
+}
+
+/* LEFT PANEL */
+.tool-panel {
+  width: 320px;
+  border-right: 1px solid #222;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: #0f1115;
+  z-index: 20;
+}
+
+/* CENTER */
+.canvas-area {
+  flex: 1;
+  margin-left: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+canvas {
+  max-width: 90%;
+  max-height: 90vh;
+  background: #111;
+  border-radius: 10px;
+  display: block;
+}
+
+/* UI */
+.top-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  z-index: 30;
+}
+
+.top-toolbar .small-btn {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  font-size: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #222;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+  border: none;
+}
+
+.tool-btn {
+  padding: 10px;
+  border-radius: 10px;
+  background: #1a1d24;
+  border: none;
+  color: white;
+  cursor: pointer;
+}
+
+.tool-btn.active {
+  background: #4f7cff;
+}
+
+input, select {
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  background: #0f1115;
+  color: white;
+  border: 1px solid #333;
+}
+
+.run-btn {
+  margin-top: 10px;
+  background: #4f7cff;
+}
+
+.history-bar {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.small-btn {
+  flex: 1;
+  padding: 8px;
+  background: #222;
+  border: none;
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.small-btn:disabled {
+  opacity: 0.3;
+}
+
+.note {
+  font-size: 12px;
+  color: #cfcfcf;
+  margin-top: 6px;
+}
+
+.processing-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  z-index: 40;
+  color: white;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 6px solid rgba(255,255,255,0.15);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 12px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+</style>
+
+<!-- toolbar will be positioned over the canvas -->
+
+<div class="editor-layout">
+
+  <!-- LEFT -->
+  <div class="tool-panel">
+
+    <hr>
+
+    <div>
+      <button id="toolRemove" class="tool-btn active">🧹 Remove</button>
+      <button id="toolEdit" class="tool-btn">✏️ Edit</button>
+    </div>
+
+    <hr>
+
+    <div id="removeSettings">
+
+      <h3>Remove</h3>
+
+      <label>
+        <input type="checkbox" id="removeAutoDetect" checked>
+        Auto detect
+      </label>
+
+      <input id="removePrompt" placeholder="object to remove">
+
+      <button class="run-btn" id="runRemove">Run</button>
+    </div>
+
+    <div id="editSettings" style="display:none">
+
+      <h3>Edit</h3>
+
+      <label>
+        <input type="checkbox" id="editAutoDetect" checked>
+        Auto detect
+      </label>
+
+      <input id="editPrompt" placeholder="edit instruction">
+
+      <button class="run-btn" id="runEdit">Run</button>
+    </div>
+
+    <hr>
+
+    <div id="engineWrap">
+      <label>Engine</label>
+      <select id="engine">
+        <option value="lama">LLaMA</option>
+        <option value="sdxl" selected>SDXL</option>
+      </select>
+    </div>
+
+    <label>Steps</label>
+    <input id="steps" type="number" value="15">
+    <div id="stepsNote" class="note">More steps = higher quality, but slower.</div>
+
+  </div>
+
+  <!-- CENTER -->
+  <div class="canvas-area">
+    <div class="top-toolbar">
+      <button id="undoBtn" class="small-btn" aria-label="Undo">⟲</button>
+      <button id="redoBtn" class="small-btn" aria-label="Redo">⟳</button>
+    </div>
+    <div id="processingOverlay" class="processing-overlay">
+      <div class="spinner" role="status" aria-hidden="true"></div>
+      <div id="processingText">Processing image</div>
+    </div>
+    <canvas id="canvas"></canvas>
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const toolRemove = document.getElementById("toolRemove");
+const toolEdit = document.getElementById("toolEdit");
+
+const removeSettings = document.getElementById("removeSettings");
+const editSettings = document.getElementById("editSettings");
+
+const engine = document.getElementById("engine");
+const steps = document.getElementById("steps");
+const engineWrap = document.getElementById("engineWrap");
+const stepsNote = document.getElementById("stepsNote");
+const processingOverlay = document.getElementById("processingOverlay");
+const processingText = document.getElementById("processingText");
+
+let isProcessing = false;
+
+function setProcessing(val, text) {
+  isProcessing = val;
+  if (processingOverlay) processingOverlay.style.display = val ? "flex" : "none";
+  if (processingText && text) processingText.textContent = text;
+
+  // disable/enable tool-panel controls
+  const controls = document.querySelectorAll('.tool-panel input, .tool-panel select, .tool-panel button');
+  controls.forEach(c => {
+    // leave the <hr> unaffected
+    try { c.disabled = val; } catch (e) {}
+  });
+
+  // disable canvas interactions while processing
+  if (val) {
+    canvas.style.pointerEvents = 'none';
+  } else {
+    canvas.style.pointerEvents = '';
+  }
+}
+
+function applyEngineRules() {
+  // If we're in edit mode, hide engine choice and set default steps=20
+  if (toolEdit.classList.contains("active")) {
+    if (engineWrap) engineWrap.style.display = "none";
+    steps.value = 20;
+    steps.disabled = false;
+    if (stepsNote) stepsNote.textContent = "Default: 20. More steps = higher quality, but slower.";
+    return;
+  }
+
+  // In remove mode / normal mode, show engine and enforce LLaMA rules
+  if (engineWrap) engineWrap.style.display = "";
+  if (engine.value === "lama") {
+    steps.value = 1;
+    steps.disabled = true;
+    if (stepsNote) stepsNote.textContent = "For LLaMA the number of steps can only be 1.";
+  } else {
+    steps.disabled = false;
+    if (!steps.value) steps.value = 15;
+    if (stepsNote) stepsNote.textContent = "More steps = higher quality, but slower.";
+  }
+}
+
+engine.addEventListener("change", applyEngineRules);
+
+/* =========================
+   HISTORY SYSTEM
+========================= */
+
+let history = [];
+let currentIndex = -1;
+
+let image = new Image();
+let box = null;
+
+/* =========================
+   INIT IMAGE
+========================= */
+
+const stored = sessionStorage.getItem("image");
+if (stored) image.src = stored;
+
+image.onload = () => {
+  pushState(image);
+};
+
+/* =========================
+   HISTORY CORE
+========================= */
+
+function pushState(img) {
+  // remove future states if redo happened
+  history = history.slice(0, currentIndex + 1);
+
+  history.push(img.src);
+  currentIndex++;
+
+  renderCurrent();
+  updateButtons();
+}
+
+function renderCurrent() {
+  const img = new Image();
+  img.src = history[currentIndex];
+
+  img.onload = () => {
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+  };
+
+  image = img;
+}
+
+function updateButtons() {
+  document.getElementById("undoBtn").disabled = currentIndex <= 0;
+  document.getElementById("redoBtn").disabled = currentIndex >= history.length - 1;
+}
+
+/* =========================
+   UNDO / REDO
+========================= */
+
+document.getElementById("undoBtn").onclick = () => {
+  if (currentIndex > 0) {
+    currentIndex--;
+    renderCurrent();
+    updateButtons();
+  }
+};
+
+document.getElementById("redoBtn").onclick = () => {
+  if (currentIndex < history.length - 1) {
+    currentIndex++;
+    renderCurrent();
+    updateButtons();
+  }
+};
+
+/* =========================
+   TOOL SWITCH
+========================= */
+
+toolRemove.onclick = () => {
+  if (isProcessing) return;
+  toolRemove.classList.add("active");
+  toolEdit.classList.remove("active");
+
+  removeSettings.style.display = "block";
+  editSettings.style.display = "none";
+  applyEngineRules();
+};
+
+toolEdit.onclick = () => {
+  if (isProcessing) return;
+  toolEdit.classList.add("active");
+  toolRemove.classList.remove("active");
+
+  removeSettings.style.display = "none";
+  editSettings.style.display = "block";
+  applyEngineRules();
+};
+
+/* =========================
+   BOX SELECT
+========================= */
+
+let startX, startY, isDrawing = false;
+
+function getCoords(e) {
+  const rect = canvas.getBoundingClientRect();
+
+  return {
+    x: (e.clientX - rect.left) * (canvas.width / rect.width),
+    y: (e.clientY - rect.top) * (canvas.height / rect.height)
+  };
+}
+
+canvas.addEventListener("mousedown", (e) => {
+  const p = getCoords(e);
+  startX = p.x;
+  startY = p.y;
+  isDrawing = true;
+});
+
+canvas.addEventListener("mousemove", (e) => {
+  if (!isDrawing) return;
+
+  const p = getCoords(e);
+
+  renderCurrent();
+
+  ctx.strokeStyle = "red";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(startX, startY, p.x - startX, p.y - startY);
+});
+
+canvas.addEventListener("mouseup", (e) => {
+  const p = getCoords(e);
+  isDrawing = false;
+
+  box = [
+    Math.round(startX),
+    Math.round(startY),
+    Math.round(p.x),
+    Math.round(p.y)
+  ];
+});
+
+/* =========================
+   UPDATE IMAGE
+========================= */
+
+function updateFromServer(blob) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+
+    img.onload = () => {
+      pushState(img);
+      resolve();
+    };
+
+    img.src = url;
+  });
+}
+
+/* =========================
+   API
+========================= */
+
+async function sendRequest(endpoint, form) {
+  const res = await fetch(endpoint, {
+    method: "POST",
+    body: form
+  });
+
+  await updateFromServer(await res.blob());
+}
+
+function getCurrentImageDataURL() {
+  if (canvas && canvas.width && canvas.height) {
+    return canvas.toDataURL("image/png");
+  }
+  if (image && image.src && image.src.startsWith("data:")) {
+    return image.src;
+  }
+  return null;
+}
+
+/* REMOVE */
+document.getElementById("runRemove").onclick = async () => {
+  if (isProcessing) return;
+  const imageData = getCurrentImageDataURL();
+  if (!imageData) return;
+  const form = new FormData();
+
+  form.append("image", dataURLtoFile(imageData, "img.png"));
+
+  const prompt = document.getElementById("removePrompt").value;
+
+  if (box) form.append("box", JSON.stringify(box));
+  if (document.getElementById("removeAutoDetect").checked) {
+    form.append("prompt", prompt);
+  }
+
+  form.append("engine", engine.value);
+  form.append("steps", engine.value === "lama" ? 1 : steps.value);
+
+  try {
+    setProcessing(true, 'Processing image');
+    await sendRequest("/api/remove-object", form);
+  } catch (e) {
+    console.error(e);
+  } finally {
+    setProcessing(false);
+  }
+};
+
+/* EDIT */
+document.getElementById("runEdit").onclick = async () => {
+  if (isProcessing) return;
+  const imageData = getCurrentImageDataURL();
+  if (!imageData) return;
+  const form = new FormData();
+
+  form.append("image", dataURLtoFile(imageData, "img.png"));
+
+  const prompt = document.getElementById("editPrompt").value;
+
+  if (box) form.append("box", JSON.stringify(box));
+
+  form.append("edit_prompt", prompt);
+  form.append("engine", engine.value);
+  form.append("steps", engine.value === "lama" ? 1 : steps.value);
+
+  try {
+    setProcessing(true, 'Processing image');
+    await sendRequest("/api/edit-object", form);
+  } catch (e) {
+    console.error(e);
+  } finally {
+    setProcessing(false);
+  }
+};
+
+/* =========================
+   HELPERS
+========================= */
+
+function dataURLtoFile(dataurl, filename) {
+  const arr = dataurl.split(',');
+  const mime = arr[0].match(/:(.*?);/)[1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+
+  while (n--) u8arr[n] = bstr.charCodeAt(n);
+
+  return new File([u8arr], filename, { type: mime });
+}
+</script>
+{% endblock %}

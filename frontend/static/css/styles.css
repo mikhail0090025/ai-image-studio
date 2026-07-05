@@ -1,0 +1,163 @@
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #0f1115;
+  color: white;
+}
+
+/* HEADER */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 24px;
+  border-bottom: 1px solid #222;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo img {
+  width: 32px;
+  height: 32px;
+}
+
+.nav a {
+  margin-left: 16px;
+  color: #aaa;
+  text-decoration: none;
+}
+
+.nav a:hover {
+  color: white;
+}
+
+/* MAIN */
+.container {
+  max-width: 900px;
+  margin: 40px auto;
+  padding: 0 20px;
+}
+
+/* FOOTER */
+.footer {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+  border-top: 1px solid #222;
+  margin-top: 60px;
+}
+
+/* COMMON BUTTONS */
+button {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: none;
+  background: #4f7cff;
+  color: white;
+  cursor: pointer;
+}
+
+button:disabled {
+  background: #333;
+}
+
+.editor-layout {
+  display: flex;
+  gap: 20px;
+}
+
+/* LEFT */
+.left-panel {
+  flex: 2;
+}
+
+.toolbar {
+  margin-bottom: 10px;
+}
+
+.toolbar button {
+  margin-right: 10px;
+  background: #222;
+}
+
+.toolbar button.active {
+  background: #4f7cff;
+}
+
+.canvas-wrapper {
+  border: 1px solid #333;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: #111;
+}
+
+.hint {
+  color: #777;
+  font-size: 12px;
+}
+
+/* RIGHT */
+.right-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+input {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: #0f1115;
+  color: white;
+}
+
+.run-btn {
+  margin-top: 10px;
+  background: #4f7cff;
+}
+
+.result-img {
+  width: 100%;
+  border-radius: 10px;
+  margin-top: 10px;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #aaa;
+  font-size: 13px;
+}
+
+hr {
+  border: 1px solid #222;
+}
+
+.hint {
+  color: #666;
+  font-size: 11px;
+}
+
+/* CANVAS */
+.canvas-panel {
+  flex: 1;
+  padding: 20px;
+}
+
+canvas {
+  width: 100%;
+  background: #111;
+  border-radius: 10px;
+}

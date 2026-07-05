@@ -28,3 +28,21 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+  
+  frontend:
+    build:
+      context: ./frontend
+    container_name: ai_image_studio_frontend
+    restart: always
+    ports:
+      - "8001:8001"
+    environment:
+      - HOME=/app
+    volumes:
+      - ./frontend:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

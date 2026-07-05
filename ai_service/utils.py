@@ -1,4 +1,7 @@
+import os
+
 from PIL import Image
+from scipy import io
 import torch
 import torchvision.transforms.functional as TF
 import matplotlib.pyplot as plt
@@ -10,7 +13,7 @@ from models import lama, processor, model, sam_processor, sam_model, pipe, sdxl_
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-TARGET_SIZE = 1024
+TARGET_SIZE = 512
 DEBUG_VIS = True # Global debug visualization flag
 
 def debug_overlay(image, mask, coords, title="Debug Overlay"):
@@ -523,18 +526,39 @@ def remove_object(
     else:
         raise ValueError(f"Unknown engine: {engine}")
 
+DEBUG_DIR = "debug"
+
+def save_debug_image(img, name):
+    os.makedirs(DEBUG_DIR, exist_ok=True)
+
+    path = os.path.join(DEBUG_DIR, name)
+
+    if isinstance(img, np.ndarray):
+        img = Image.fromarray(img.astype(np.uint8))
+
+    img.save(path)
+
+    print(f"[DEBUG] saved: {path}")
+
 def restore_patch(
     original_image,
     generated_512,
     mask_original,
     metadata,
     feather=15,
-    dilation=30
+    dilation=30,
+    dont_crop=False
 ):
     if DEBUG_VIS:
         print(f"\nEntering restore_patch. Feather: {feather}")
         plt.figure(figsize=(8,8)); plt.imshow(generated_512); plt.title('Generated 512x512 Image'); plt.axis('off'); plt.show()
         plt.figure(figsize=(8,8)); plt.imshow(mask_original, cmap='gray'); plt.title('Original Mask for Patch Restoration'); plt.axis('off'); plt.show()
+
+    # ---- images ----
+    save_debug_image(generated_512, "generated_512.png")
+    save_debug_image(mask_original * 255 if isinstance(mask_original, np.ndarray) else mask_original,
+                     "mask_original.png")
+    print(f"Metadata for restore_patch: {metadata}")
 
     # ---------- размеры ----------
     scale = metadata["scale"]
@@ -547,12 +571,15 @@ def restore_patch(
     new_h = int(original_h * scale)
 
     # ---------- убираем padding ----------
-    generated = generated_512.crop((
-        pad_left,
-        pad_top,
-        pad_left + new_w,
-        pad_top + new_h
-    ))
+    if dont_crop:
+        generated = generated_512
+    else:
+        generated = generated_512.crop((
+            pad_left,
+            pad_top,
+            pad_left + new_w,
+            pad_top + new_h
+        ))
 
     generated = generated.resize(
         (original_w, original_h),
@@ -611,6 +638,78 @@ def restore_patch(
 
     return generated, result
 
+def restore_patch_edit(original_image,
+                  generated_512,
+                  mask_original,
+                  metadata,
+                  feather=15):
+
+    # ---------- размеры ----------
+    scale = metadata["scale"]
+    pad_left = metadata["pad_left"]
+    pad_top = metadata["pad_top"]
+
+    original_w, original_h = metadata["original_size"]
+
+    new_w = int(original_w * scale)
+    new_h = int(original_h * scale)
+
+    # ---------- убираем padding ----------
+    generated = generated_512.crop((
+        pad_left,
+        pad_top,
+        pad_left + new_w,
+        pad_top + new_h
+    ))
+
+    generated = generated.resize(
+        (original_w, original_h),
+        Image.BICUBIC
+    )
+
+    # ---------- маску тоже приводим ----------
+    mask = (mask_original.astype(np.uint8) * 255)
+
+    mask = Image.fromarray(mask)
+
+    mask = mask.resize(
+        (new_w, new_h),
+        Image.NEAREST
+    )
+
+    canvas = Image.new("L", (TARGET_SIZE, TARGET_SIZE), 0)
+    canvas.paste(mask, (pad_left, pad_top))
+
+    mask = canvas.crop((
+        pad_left,
+        pad_top,
+        pad_left + new_w,
+        pad_top + new_h
+    ))
+
+    mask = mask.resize(
+        (original_w, original_h),
+        Image.NEAREST
+    )
+
+    mask = np.array(mask)
+
+    mask = cv2.GaussianBlur(
+        mask,
+        (feather * 2 + 1, feather * 2 + 1),
+        0
+    )
+
+    mask = mask.astype(np.float32) / 255.0
+    mask = mask[..., None]
+
+    original = np.array(original_image).astype(np.float32)
+    generated = np.array(generated).astype(np.float32)
+
+    result = original * (1.0 - mask) + generated * mask
+
+    return Image.fromarray(result.astype(np.uint8))
+
 def edit_image(
         image,
         mask,
@@ -655,14 +754,15 @@ def edit_image(
     # Возвращаем в оригинальное разрешение и применяем маску
     # ----------------------------------
 
-    result = restore_patch(
+    generated_patch = restore_patch_edit(
         image,
         result512,
         mask,
         metadata
     )
 
-    return result
+    # return Image.fromarray(blended.astype(np.uint8))
+    return generated_patch
 
 def remove_object_manual_box(
     image: Image.Image,
@@ -730,6 +830,9 @@ def remove_object_manual_box(
         prompt=prompt,
         negative_prompt=negative_prompt,
     )
+    result512 = result512.resize((img512.width, img512.height), Image.BICUBIC)
+    print(img512.size, combined_mask.shape, result512.size)
+    print(metadata)
     end_removal_time = time.time()
     print(f"Object removal time: {end_removal_time - start_removal_time:.4f} seconds")
 
@@ -757,8 +860,26 @@ def remove_object_manual_box(
         combined_mask,
         metadata,
         dilation=dilation,
-        feather=feather
+        feather=feather,
+        # dont_crop=engine=="sdxl"
+        dont_crop=False
     )
+
+    ### DEBUG
+    try:
+        Image.fromarray(blended_image_np.astype(np.uint8)).save("blended_image_np.png", format="PNG")
+    except Exception as e:
+        print(f"Failed to save blended_image_np.png: {e}, object type: {type(blended_image_np)}")
+    
+    try:
+        generated_patch.save("generated_patch.png", format="PNG")
+    except Exception as e:
+        print(f"Failed to save generated_patch.png: {e}, object type: {type(generated_patch)}")
+
+    try:
+        result512.save("result512.png", format="PNG")
+    except Exception as e:
+        print(f"Failed to save result512.png: {e}, object type: {type(result512)}")
 
     return Image.fromarray(blended_image_np.astype(np.uint8)), generated_patch
 

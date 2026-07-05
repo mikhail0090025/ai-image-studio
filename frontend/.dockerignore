@@ -1,0 +1,4 @@
+__pycache__
+/ai_service/.cache
+ai_service/.bash_history
+*.pyc

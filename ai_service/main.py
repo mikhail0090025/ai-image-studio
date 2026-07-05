@@ -208,6 +208,10 @@ async def edit_object_endpoint(
             steps=steps,
         )
 
+        print("Result:")
+        print(result)
+        print(f"Edited image size: {result.size}, original image size: {img.size}")
+
     # ------------------------------------------------------------
     # Возвращаем изображение
     # ------------------------------------------------------------

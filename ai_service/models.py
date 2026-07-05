@@ -1,6 +1,8 @@
+import inspect
 import os
 import torch
 
+from PIL import Image
 from transformers import (
     AutoProcessor,
     AutoModelForZeroShotObjectDetection,
@@ -103,5 +105,87 @@ print("Loading LaMa...")
 lama = SimpleLama(device=torch.device("cpu"))
 print("✓ LaMa ready")
 
+'''
+def _move_to_device(batch, device_name):
+    if isinstance(batch, torch.Tensor):
+        return batch.to(device_name)
+    if isinstance(batch, dict):
+        return {key: _move_to_device(value, device_name) for key, value in batch.items()}
+    if isinstance(batch, list):
+        return [_move_to_device(value, device_name) for value in batch]
+    return batch
+
+
+def dummy_warmup():
+    print("Running dummy warmup for loaded models...")
+    dummy_image = Image.new("RGB", (512, 512), color=(255, 0, 0))
+    dummy_mask = Image.new("L", (512, 512), color=0)
+
+    with torch.inference_mode():
+        try:
+            inputs = processor(
+                images=[dummy_image],
+                text=["dummy object"],
+                return_tensors="pt",
+            )
+            model(**_move_to_device(inputs, device))
+            print("✓ Grounding DINO warmup")
+        except Exception as exc:
+            print(f"⚠ Grounding DINO warmup skipped: {exc}")
+
+        try:
+            sam_inputs = sam_processor(
+                images=[dummy_image],
+                input_points=[[[0.0, 0.0]]],
+                input_labels=[[1]],
+                return_tensors="pt",
+            )
+            sam_model(**_move_to_device(sam_inputs, device))
+            print("✓ SAM warmup")
+        except Exception as exc:
+            print(f"⚠ SAM warmup skipped: {exc}")
+
+        try:
+            pipe(
+                prompt="dummy",
+                image=dummy_image,
+                num_inference_steps=1,
+                guidance_scale=1.0,
+                output_type="pil",
+            )
+            print("✓ InstructPix2Pix warmup")
+        except Exception as exc:
+            print(f"⚠ InstructPix2Pix warmup skipped: {exc}")
+
+        try:
+            sdxl_inpainting_pipeline(
+                prompt="dummy",
+                image=dummy_image,
+                mask_image=dummy_mask,
+                num_inference_steps=1,
+                output_type="pil",
+            )
+            print("✓ SD inpainting warmup")
+        except Exception as exc:
+            print(f"⚠ SD inpainting warmup skipped: {exc}")
+
+        try:
+            if hasattr(lama, "inpaint"):
+                method = getattr(lama, "inpaint")
+                try:
+                    method(dummy_image, mask=dummy_mask)
+                except TypeError:
+                    method(dummy_image)
+            elif hasattr(lama, "forward"):
+                getattr(lama, "forward")()
+            else:
+                getattr(lama, "model", None)
+            print("✓ LaMa warmup")
+        except Exception as exc:
+            print(f"⚠ LaMa warmup skipped: {exc}")
+
+
+dummy_warmup()
 
 print("\nAll models loaded from cache.")
+'''

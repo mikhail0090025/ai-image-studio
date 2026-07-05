@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Upload - AI Image Studio{% endblock %}
+
+{% block content %}
+
+<h1>Upload image</h1>
+<p style="color:#aaa">Select an image to start editing</p>
+
+<div id="dropZone" class="drop-zone">
+  <input type="file" id="fileInput" accept="image/*" hidden>
+
+  <div class="drop-content">
+    <p>Drag & drop image here</p>
+    <p>or</p>
+    <button id="selectBtn">Select file</button>
+  </div>
+
+  <img id="preview" class="preview hidden" />
+</div>
+
+<button id="continueBtn" disabled style="margin-top:20px;width:100%">
+  Continue
+</button>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/upload.js"></script>
+{% endblock %}
