@@ -3,9 +3,6 @@ docker-compose build
 docker-compose up -d
 
 Tests:
-cd ai_service
-docker exec -it ai_image_studio_ai_service python -m pytest
-cd ..
 cd frontend
 docker exec -it ai_image_studio_frontend python -m pytest
 cd ..
