@@ -265,9 +265,10 @@ function setProcessing(val, text) {
 }
 
 function applyEngineRules() {
-  // If we're in edit mode, hide engine choice and set default steps=20
+  // If we're in edit mode, hide engine choice and force SDXL
   if (toolEdit.classList.contains("active")) {
     if (engineWrap) engineWrap.style.display = "none";
+    engine.value = "sdxl";
     steps.value = 20;
     steps.disabled = false;
     if (stepsNote) stepsNote.textContent = "Default: 20. More steps = higher quality, but slower.";
@@ -494,20 +495,32 @@ async function sendRequest(endpoint, form) {
   await updateFromServer(await res.blob());
 }
 
-function getCurrentImageDataURL() {
-  if (canvas && canvas.width && canvas.height) {
-    return canvas.toDataURL("image/png");
-  }
-  if (image && image.src && image.src.startsWith("data:")) {
-    return image.src;
-  }
-  return null;
+async function getCurrentImageDataURL() {
+  const src = history[currentIndex] || (image && image.src ? image.src : null);
+  if (!src) return null;
+
+  return await new Promise((resolve) => {
+    const exportCanvas = document.createElement("canvas");
+    exportCanvas.width = canvas.width || 1;
+    exportCanvas.height = canvas.height || 1;
+    const exportCtx = exportCanvas.getContext("2d");
+    const img = new Image();
+
+    img.onload = () => {
+      exportCtx.clearRect(0, 0, exportCanvas.width, exportCanvas.height);
+      exportCtx.drawImage(img, 0, 0, exportCanvas.width, exportCanvas.height);
+      resolve(exportCanvas.toDataURL("image/png"));
+    };
+
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
 }
 
 /* REMOVE */
 document.getElementById("runRemove").onclick = async () => {
   if (isProcessing) return;
-  const imageData = getCurrentImageDataURL();
+  const imageData = await getCurrentImageDataURL();
   if (!imageData) return;
   const form = new FormData();
 
@@ -536,7 +549,7 @@ document.getElementById("runRemove").onclick = async () => {
 /* EDIT */
 document.getElementById("runEdit").onclick = async () => {
   if (isProcessing) return;
-  const imageData = getCurrentImageDataURL();
+  const imageData = await getCurrentImageDataURL();
   if (!imageData) return;
   const form = new FormData();
 
@@ -547,8 +560,8 @@ document.getElementById("runEdit").onclick = async () => {
   if (box) form.append("box", JSON.stringify(box));
 
   form.append("edit_prompt", prompt);
-  form.append("engine", engine.value);
-  form.append("steps", engine.value === "lama" ? 1 : steps.value);
+  form.append("engine", toolEdit.classList.contains("active") ? "sdxl" : engine.value);
+  form.append("steps", toolEdit.classList.contains("active") ? steps.value : (engine.value === "lama" ? 1 : steps.value));
 
   try {
     setProcessing(true, 'Processing image');
