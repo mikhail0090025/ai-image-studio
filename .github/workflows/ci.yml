@@ -1,0 +1,45 @@
+name: CI (Docker Compose)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Build containers
+        run: |
+          docker compose down
+          docker compose build
+
+      - name: Start containers
+        run: |
+          docker compose up -d
+
+      - name: Wait for services
+        run: |
+          sleep 20
+
+      - name: Run backend tests
+        run: |
+          docker exec ai_image_studio_ai_service python -m pytest
+
+      - name: Run frontend tests
+        run: |
+          docker exec ai_image_studio_frontend python -m pytest
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          docker compose logs
+
+      - name: Shutdown containers
+        if: always()
+        run: |
+          docker compose down

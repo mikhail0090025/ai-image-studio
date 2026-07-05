@@ -13,3 +13,4 @@ controlnet_aux==0.0.10
 accelerate>=1.0.0
 matplotlib>=3.7.0
 pytest>=7.4.0
+nudenet>=3.4.2
