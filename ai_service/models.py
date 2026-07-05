@@ -71,13 +71,12 @@ print("✓ SAM ready")
 print("Loading InstructPix2Pix...")
 pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
     "timbrooks/instruct-pix2pix",
-    torch_dtype=torch.float16,
+    torch_dtype=torch.float32,
     variant="fp16",
     safety_checker=None,
     cache_dir=CACHE_DIR
 ).to(device)
 
-pipe = pipe.to(torch.float32)
 print("✓ InstructPix2Pix ready")
 
 
@@ -87,14 +86,13 @@ print("✓ InstructPix2Pix ready")
 print("Loading SD Inpainting...")
 sdxl_inpainting_pipeline = StableDiffusionInpaintPipeline.from_pretrained(
     "sd2-community/stable-diffusion-2-inpainting",
-    torch_dtype=torch.float16,
+    torch_dtype=torch.float32,
     variant="fp16",
     use_safetensors=True,
     safety_checker=None,
     cache_dir=CACHE_DIR
 ).to(device)
 
-sdxl_inpainting_pipeline = sdxl_inpainting_pipeline.to(torch.float32)
 print("✓ Inpainting ready")
 
 

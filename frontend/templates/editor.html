@@ -325,7 +325,31 @@ function pushState(img) {
   updateButtons();
 }
 
-function renderCurrent() {
+function normalizeBox(rect) {
+  if (!rect) return null;
+
+  const [x1, y1, x2, y2] = rect;
+  return [
+    Math.min(x1, x2),
+    Math.min(y1, y2),
+    Math.max(x1, x2),
+    Math.max(y1, y2)
+  ];
+}
+
+function drawSelectionBox(rect) {
+  if (!rect || !canvas.width || !canvas.height) return;
+
+  const [x1, y1, x2, y2] = normalizeBox(rect);
+  ctx.save();
+  ctx.strokeStyle = "#ff4d4f";
+  ctx.lineWidth = 3;
+  ctx.setLineDash([8, 6]);
+  ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+  ctx.restore();
+}
+
+function renderCurrent(rect = box) {
   const img = new Image();
   img.src = history[currentIndex];
 
@@ -333,6 +357,7 @@ function renderCurrent() {
     canvas.width = img.width;
     canvas.height = img.height;
     ctx.drawImage(img, 0, 0);
+    drawSelectionBox(rect);
   };
 
   image = img;
@@ -407,30 +432,35 @@ canvas.addEventListener("mousedown", (e) => {
   startX = p.x;
   startY = p.y;
   isDrawing = true;
+  box = null;
 });
 
 canvas.addEventListener("mousemove", (e) => {
   if (!isDrawing) return;
 
   const p = getCoords(e);
+  const previewBox = normalizeBox([
+    Math.round(startX),
+    Math.round(startY),
+    Math.round(p.x),
+    Math.round(p.y)
+  ]);
 
-  renderCurrent();
-
-  ctx.strokeStyle = "red";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(startX, startY, p.x - startX, p.y - startY);
+  renderCurrent(previewBox);
 });
 
 canvas.addEventListener("mouseup", (e) => {
   const p = getCoords(e);
   isDrawing = false;
 
-  box = [
+  box = normalizeBox([
     Math.round(startX),
     Math.round(startY),
     Math.round(p.x),
     Math.round(p.y)
-  ];
+  ]);
+
+  renderCurrent(box);
 });
 
 /* =========================

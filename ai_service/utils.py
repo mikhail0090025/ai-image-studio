@@ -14,7 +14,7 @@ from models import lama, processor, model, sam_processor, sam_model, pipe, sdxl_
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 TARGET_SIZE = 512
-DEBUG_VIS = True # Global debug visualization flag
+DEBUG_VIS = False # Global debug visualization flag
 
 def debug_overlay(image, mask, coords, title="Debug Overlay"):
     if not DEBUG_VIS:
