@@ -16,6 +16,27 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 TARGET_SIZE = 512
 DEBUG_VIS = False # Global debug visualization flag
 
+import time
+from functools import wraps
+
+def time_logger(model_name=None):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start = time.perf_counter()
+
+            result = func(*args, **kwargs)
+
+            end = time.perf_counter()
+            elapsed = end - start
+
+            name = model_name or func.__name__
+            print(f"[TIMER] {name}: {elapsed:.4f} sec")
+
+            return result
+        return wrapper
+    return decorator
+
 def debug_overlay(image, mask, coords, title="Debug Overlay"):
     if not DEBUG_VIS:
         return
