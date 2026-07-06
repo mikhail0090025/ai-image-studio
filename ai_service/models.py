@@ -64,7 +64,6 @@ sam_model = SamModel.from_pretrained(
 sam_model.eval()
 print("✓ SAM ready")
 
-
 # -------------------------
 # InstructPix2Pix
 # -------------------------

@@ -66,6 +66,7 @@ def debug_overlay(image, mask, coords, title="Debug Overlay"):
 
     plt.show()
 
+@time_logger("preprocess_image")
 def preprocess_image(image):
     image = image.convert("RGB")
 
@@ -101,6 +102,7 @@ def preprocess_image(image):
 import cv2
 import math
 
+@time_logger("calculate_iterations")
 def calculate_iterations(mask, erosion_step=20):
     """
     erosion_step — на сколько пикселей уменьшается маска за шаг.
@@ -118,6 +120,7 @@ def calculate_iterations(mask, erosion_step=20):
 
     return max(1, math.ceil(size / erosion_step))
 
+@time_logger("restore_boxes")
 def restore_boxes(boxes, metadata):
 
     boxes = boxes.clone()
@@ -134,6 +137,7 @@ def restore_boxes(boxes, metadata):
 
     return boxes
 
+@time_logger("detect_object")
 def detect_object(image: Image.Image,
                   prompt: str,
                   threshold: float = 0.4):
@@ -273,6 +277,7 @@ def to_device(batch, device):
         for k, v in batch.items()
     }
 
+@time_logger("segment_object")
 def segment_object(image, box):
     """
     box: [x1, y1, x2, y2]
@@ -317,6 +322,7 @@ def show_segmentation(image, mask, title="Segmentation"):
     plt.axis("off")
     plt.show()
 
+@time_logger("detect_and_segment")
 def detect_and_segment(image, prompt, threshold=0.4):
 
     start_detection_time = time.time()
@@ -380,6 +386,7 @@ def detect_and_segment(image, prompt, threshold=0.4):
 
     return combined_mask, boxes
 
+@time_logger("calculate_dilation")
 def calculate_dilation(box, scale=0.15, min_value=10, max_value=200):
     """
     Automatically computes dilation based on object size.
@@ -403,6 +410,7 @@ def calculate_dilation(box, scale=0.15, min_value=10, max_value=200):
 
     return dilation
 
+@time_logger("build_mask_levels")
 def build_mask_levels(mask, steps=3, shrink=30):
     masks = []
     current = mask.copy()
@@ -428,6 +436,7 @@ def build_mask_levels(mask, steps=3, shrink=30):
 
     return masks[::-1]  # от малого к большому
 
+@time_logger("resize_mask")
 def resize_mask(mask, metadata):
     """
     Приводит маску к тому же пространству, что и preprocess_image().
@@ -475,6 +484,7 @@ def resize_mask(mask, metadata):
 
     return final_mask
 
+@time_logger("remove_object")
 def remove_object(
         image,
         mask,
@@ -561,6 +571,7 @@ def save_debug_image(img, name):
 
     print(f"[DEBUG] saved: {path}")
 
+@time_logger("restore_patch")
 def restore_patch(
     original_image,
     generated_512,
@@ -659,6 +670,7 @@ def restore_patch(
 
     return generated, result
 
+@time_logger("restore_patch_edit")
 def restore_patch_edit(original_image,
                   generated_512,
                   mask_original,
@@ -731,6 +743,7 @@ def restore_patch_edit(original_image,
 
     return Image.fromarray(result.astype(np.uint8))
 
+@time_logger("edit_image")
 def edit_image(
         image,
         mask,
@@ -785,6 +798,7 @@ def edit_image(
     # return Image.fromarray(blended.astype(np.uint8))
     return generated_patch
 
+@time_logger("remove_object_manual_box")
 def remove_object_manual_box(
     image: Image.Image,
     box: list, # [x1, y1, x2, y2]
@@ -904,6 +918,7 @@ def remove_object_manual_box(
 
     return Image.fromarray(blended_image_np.astype(np.uint8)), generated_patch
 
+@time_logger("edit_image_with_manual_box")
 def edit_image_with_manual_box(
     image, 
     box, # [x1, y1, x2, y2]
