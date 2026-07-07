@@ -8,11 +8,14 @@ from transformers import (
     AutoModelForZeroShotObjectDetection,
     SamProcessor,
     SamModel,
+    AutoImageProcessor,
+    Mask2FormerForUniversalSegmentation,
 )
 
 from diffusers import (
     StableDiffusionInstructPix2PixPipeline,
     StableDiffusionInpaintPipeline,
+    StableDiffusionPipeline,
 )
 
 from simple_lama_inpainting import SimpleLama
@@ -75,5 +78,28 @@ lama = SimpleLama(device=torch.device("cpu"))
 del lama
 
 print("✓ LaMa")
+
+sd_turbo_pipeline = StableDiffusionPipeline.from_pretrained(
+    "stabilityai/sd-turbo",
+    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+    variant="fp16",
+    use_safetensors=True,
+    safety_checker=None,
+)
+del sd_turbo_pipeline
+
+print("✓ SD Turbo")
+
+processor = AutoImageProcessor.from_pretrained(
+    "facebook/mask2former-swin-large-coco-instance"
+)
+
+model = Mask2FormerForUniversalSegmentation.from_pretrained(
+    "facebook/mask2former-swin-large-coco-instance"
+)
+del model
+del processor
+
+print("✓ Mask2Former")
 
 print("\nAll models are cached.")
