@@ -8,15 +8,17 @@ from transformers import (
     AutoModelForZeroShotObjectDetection,
     SamProcessor,
     SamModel,
+    AutoImageProcessor,
+    Mask2FormerForUniversalSegmentation,
 )
 
 from diffusers import (
     StableDiffusionInstructPix2PixPipeline,
     StableDiffusionInpaintPipeline,
+    StableDiffusionPipeline,
 )
 
 from simple_lama_inpainting import SimpleLama
-
 
 # Важно: указываем общий кэш HuggingFace
 CACHE_DIR = "/app/models/huggingface"
@@ -102,6 +104,40 @@ print("Loading LaMa...")
 lama = SimpleLama(device=torch.device("cpu"))
 print("✓ LaMa ready")
 
+# -------------------------
+# SD Turbo
+# -------------------------
+
+sd_turbo_pipeline = StableDiffusionPipeline.from_pretrained(
+    "stabilityai/sd-turbo",
+    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+    variant="fp16",
+    use_safetensors=True,
+    safety_checker=None,
+    cache_dir=CACHE_DIR
+)
+del sd_turbo_pipeline
+
+print("✓ SD Turbo")
+
+# -------------------------
+# Mask2Former
+# -------------------------
+
+processor = AutoImageProcessor.from_pretrained(
+    "facebook/mask2former-swin-large-coco-instance",
+    cache_dir=CACHE_DIR
+)
+
+model = Mask2FormerForUniversalSegmentation.from_pretrained(
+    "facebook/mask2former-swin-large-coco-instance",
+    cache_dir=CACHE_DIR
+)
+del model
+del processor
+
+print("✓ Mask2Former")
+
 '''
 def _move_to_device(batch, device_name):
     if isinstance(batch, torch.Tensor):
@@ -183,6 +219,6 @@ def dummy_warmup():
 
 
 dummy_warmup()
+'''
 
 print("\nAll models loaded from cache.")
-'''
