@@ -9,11 +9,13 @@ import matplotlib.patches as patches
 import numpy as np
 from tqdm.auto import tqdm
 
-from models import lama, processor, model, sam_processor, sam_model, pipe, sdxl_inpainting_pipeline
+from models import *
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 TARGET_SIZE = 512
+DETECTION_SIZE = 384
+SAM_SIZE = 384
 DEBUG_VIS = False # Global debug visualization flag
 
 import time

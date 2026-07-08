@@ -124,17 +124,15 @@ print("✓ SD Turbo")
 # Mask2Former
 # -------------------------
 
-processor = AutoImageProcessor.from_pretrained(
+mask_2_former_processor = AutoImageProcessor.from_pretrained(
     "facebook/mask2former-swin-large-coco-instance",
     cache_dir=CACHE_DIR
 )
 
-model = Mask2FormerForUniversalSegmentation.from_pretrained(
+mask_2_former_model = Mask2FormerForUniversalSegmentation.from_pretrained(
     "facebook/mask2former-swin-large-coco-instance",
     cache_dir=CACHE_DIR
 )
-del model
-del processor
 
 print("✓ Mask2Former")
 
