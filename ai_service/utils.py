@@ -8,13 +8,11 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
 from tqdm.auto import tqdm
+from global_vars import *
 
-from models import lama, processor, model, sam_processor, sam_model, pipe, sdxl_inpainting_pipeline
+from models import *
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-TARGET_SIZE = 512
-DEBUG_VIS = False # Global debug visualization flag
 
 import time
 from functools import wraps
@@ -67,22 +65,22 @@ def debug_overlay(image, mask, coords, title="Debug Overlay"):
     plt.show()
 
 @time_logger("preprocess_image")
-def preprocess_image(image):
+def preprocess_image(image, target_size=TARGET_SIZE):
     image = image.convert("RGB")
 
     original_w, original_h = image.size
 
-    scale = TARGET_SIZE / max(original_w, original_h)
+    scale = target_size / max(original_w, original_h)
 
     new_w = int(original_w * scale)
     new_h = int(original_h * scale)
 
     resized = image.resize((new_w, new_h), Image.BICUBIC)
 
-    pad_left = (TARGET_SIZE - new_w) // 2
-    pad_top = (TARGET_SIZE - new_h) // 2
-    pad_right = TARGET_SIZE - new_w - pad_left
-    pad_bottom = TARGET_SIZE - new_h - pad_top
+    pad_left = (target_size - new_w) // 2
+    pad_top = (target_size - new_h) // 2
+    pad_right = target_size - new_w - pad_left
+    pad_bottom = target_size - new_h - pad_top
 
     padded = TF.pad(
         resized,
@@ -94,7 +92,8 @@ def preprocess_image(image):
         "scale": scale,
         "pad_left": pad_left,
         "pad_top": pad_top,
-        "original_size": (original_w, original_h)
+        "original_size": (original_w, original_h),
+        "target_size": target_size,
     }
 
     return padded, metadata
@@ -142,7 +141,7 @@ def detect_object(image: Image.Image,
                   prompt: str,
                   threshold: float = 0.4):
 
-    image, metadata = preprocess_image(image)
+    image, metadata = preprocess_image(image, target_size=DETECTION_SIZE)
 
     # Grounding DINO любит точки в конце текста
     if not prompt.endswith("."):
@@ -154,7 +153,7 @@ def detect_object(image: Image.Image,
         return_tensors="pt"
     ).to(device)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         outputs = model(**inputs)
 
     results = processor.post_process_grounded_object_detection(
@@ -283,15 +282,34 @@ def segment_object(image, box):
     box: [x1, y1, x2, y2]
     """
 
+    original_size = image.size
+    resized_image = image.resize((SAM_SIZE, SAM_SIZE), Image.BICUBIC)
+
+    if torch.is_tensor(box):
+        box = box.detach().cpu().float()
+    else:
+        box = torch.tensor(box, dtype=torch.float32)
+
+    x1, y1, x2, y2 = box.tolist()
+    scale_x = SAM_SIZE / original_size[0]
+    scale_y = SAM_SIZE / original_size[1]
+
+    resized_box = [
+        x1 * scale_x,
+        y1 * scale_y,
+        x2 * scale_x,
+        y2 * scale_y,
+    ]
+
     inputs = sam_processor(
-        image,
-        input_boxes=[[box.tolist()]],
+        resized_image,
+        input_boxes=[[resized_box]],
         return_tensors="pt"
     )
 
     inputs = to_device(inputs, device)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         outputs = sam_model(**inputs)
 
     device_t = outputs.pred_masks.device
@@ -306,6 +324,11 @@ def segment_object(image, box):
 
     # берем первую маску (самую вероятную)
     mask = masks[0][0].detach().cpu().numpy()
+    mask = (mask > 0).astype(np.uint8) * 255
+
+    mask_image = Image.fromarray(mask)
+    mask_image = mask_image.resize(original_size, Image.NEAREST)
+    mask = np.array(mask_image) > 0
 
     return mask
 
@@ -522,7 +545,8 @@ def remove_object(
             if DEBUG_VIS:
                 print(f"  Inpainting with mask level {i+1}: shape {m.shape}, Max value: {m.max()}, Min value: {m.min()}")
                 plt.figure(figsize=(5,5)); plt.imshow(m, cmap='gray'); plt.title(f'LaMa Inpainting Mask Level {i+1}'); plt.axis('off'); plt.show()
-            result = lama(result, Image.fromarray(m))
+            with torch.inference_mode():
+                result = lama(result, Image.fromarray(m))
             if DEBUG_VIS:
                 plt.figure(figsize=(8,8)); plt.imshow(result); plt.title(f'LaMa Inpainting Result after Level {i+1}'); plt.axis('off'); plt.show()
 
@@ -539,15 +563,16 @@ def remove_object(
 
         current = image
 
-        current = sdxl_inpainting_pipeline(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            image=current,
-            mask_image=Image.fromarray(mask),
-            num_inference_steps=steps,
-            guidance_scale=7.5,
-            strength=1.0
-        ).images[0]
+        with torch.inference_mode():
+            current = sdxl_inpainting_pipeline(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                image=current,
+                mask_image=Image.fromarray(mask),
+                num_inference_steps=steps,
+                guidance_scale=7.5,
+                strength=1.0
+            ).images[0]
 
         if DEBUG_VIS:
             print("SDXL Inpainting finished.")
@@ -771,18 +796,19 @@ def edit_image(
 
     print("Input Image for InstructPix2Pix:", image512.size)
 
-    result512 = pipe(
+    with torch.inference_mode():
+        result512 = pipe(
 
-        prompt=prompt,
-        negative_prompt=negative_prompt,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
 
-        image=image512,
+            image=image512,
 
-        num_inference_steps=steps,
-        guidance_scale=guidance_scale, # Text guidance
-        image_guidance_scale=strength, # Image guidance (how much to adhere to input image)
+            num_inference_steps=steps,
+            guidance_scale=guidance_scale, # Text guidance
+            image_guidance_scale=strength, # Image guidance (how much to adhere to input image)
 
-    ).images[0]
+        ).images[0]
 
     # ----------------------------------
     # Возвращаем в оригинальное разрешение и применяем маску
@@ -978,3 +1004,88 @@ def edit_image_with_manual_box(
     )
 
     return edited_image
+
+def prepare_background_and_segmentation(
+    image_path: str,
+    background_prompt: str,
+    seed: int = 42
+) -> tuple[Image.Image, Image.Image, np.ndarray, list]:
+    print(f"Processing image: {image_path}")
+    original_pil_image = Image.open(image_path).convert("RGB")
+    target_width, target_height = original_pil_image.size
+
+    print("Generating background...")
+    gen_w, gen_h = 512, 512
+    generator = torch.Generator(device=device).manual_seed(seed)
+
+    gen_bg = sd_turbo_pipeline(
+        prompt=background_prompt,
+        height=gen_h,
+        width=gen_w,
+        num_inference_steps=2,
+        guidance_scale=1.0,
+        generator=generator
+    ).images[0]
+
+    target_ratio = target_width / target_height
+    gen_ratio = gen_w / gen_h
+
+    if abs(gen_ratio - target_ratio) > 1e-6:
+        if gen_ratio > target_ratio:
+            new_w = int(gen_h * target_ratio)
+            left = (gen_w - new_w) / 2
+            gen_bg = gen_bg.crop((left, 0, left + new_w, gen_h))
+        else:
+            new_h = int(gen_w / target_ratio)
+            top = (gen_h - new_h) / 2
+            gen_bg = gen_bg.crop((0, top, gen_w, top + new_h))
+
+    processed_bg = gen_bg.resize((target_width, target_height), Image.LANCZOS)
+
+    print("Running Mask2Former segmentation (optimized resize)...")
+    # Resize so longest side is 512px
+    max_side = 512
+    if max(target_width, target_height) > max_side:
+        scale = max_side / max(target_width, target_height)
+        low_res_size = (int(target_width * scale), int(target_height * scale))
+        seg_input_image = original_pil_image.resize(low_res_size, Image.BILINEAR)
+    else:
+        seg_input_image = original_pil_image
+
+    inputs = processor(images=seg_input_image, return_tensors="pt").to(device)
+    with torch.no_grad():
+        outputs = model(**inputs)
+
+    # Post-process resizes the segmentation back to the original target_size
+    result = processor.post_process_instance_segmentation(outputs, target_sizes=[original_pil_image.size[::-1]])[0]
+
+    return original_pil_image, processed_bg, result["segmentation"].cpu().numpy(), result["segments_info"]
+
+def apply_segmentation_mask_and_composite(
+    original_img: Image.Image,
+    background_img: Image.Image,
+    segmentation: np.ndarray,
+    segments_info: list,
+    target_class_ids: list[int],
+    blur_radius: int = 5
+) -> Image.Image:
+    print(f"Creating mask for class IDs: {target_class_ids}")
+    mask_array = np.zeros(segmentation.shape, dtype=np.uint8)
+
+    for segment in segments_info:
+        if segment["label_id"] in target_class_ids:
+            mask_array[segmentation == segment["id"]] = 255
+
+    if blur_radius > 0:
+        k_size = blur_radius * 2 + 1
+        mask_array = cv2.GaussianBlur(mask_array, (k_size, k_size), 0)
+
+    mask_image = Image.fromarray(mask_array)
+    final_image = Image.composite(original_img, background_img, mask_image)
+
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 2, 1); plt.imshow(mask_image, cmap='gray'); plt.title("Mask"); plt.axis("off")
+    plt.subplot(1, 2, 2); plt.imshow(final_image); plt.title("Final Result"); plt.axis("off")
+    plt.show()
+
+    return final_image
