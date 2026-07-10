@@ -24,10 +24,10 @@ services:
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+      interval: 20s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
 
   frontend:
     build:
@@ -53,4 +53,4 @@ services:
       interval: 15s
       timeout: 5s
       retries: 10
-      start_period: 20s
+      start_period: 5s

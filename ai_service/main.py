@@ -1,4 +1,5 @@
 import json
+import tempfile
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile, File
 from PIL import Image
@@ -223,4 +224,72 @@ async def edit_object_endpoint(
     return StreamingResponse(
         output,
         media_type="image/png",
+    )
+
+@app.post("/change-background")
+async def change_background(
+    image: UploadFile = File(...),
+    background_prompt: str = Form(...),
+    seed: int = Form(42)
+):
+    """
+    Replace image background using Stable Diffusion + Mask2Former
+    """
+
+    # сохраняем временный файл,
+    # потому что твой pipeline принимает image_path
+    image_bytes = await image.read()
+
+    with tempfile.NamedTemporaryFile(
+        suffix=".png",
+        delete=False
+    ) as tmp:
+
+        tmp.write(image_bytes)
+        image_path = tmp.name
+
+
+    # -----------------------------
+    # Generate background + segmentation
+    # -----------------------------
+
+    original_img, background_img, segmentation, segments_info = (
+        prepare_background_and_segmentation(
+            image_path=image_path,
+            background_prompt=background_prompt,
+            seed=seed
+        )
+    )
+
+
+    # -----------------------------
+    # Apply mask and composite
+    # -----------------------------
+
+    result = apply_segmentation_mask_and_composite(
+        original_img=original_img,
+        background_img=background_img,
+        segmentation=segmentation,
+        segments_info=segments_info,
+        target_class_ids=[0]
+    )
+
+
+    # -----------------------------
+    # Return image
+    # -----------------------------
+
+    output = io.BytesIO()
+
+    result.save(
+        output,
+        format="PNG"
+    )
+
+    output.seek(0)
+
+
+    return StreamingResponse(
+        output,
+        media_type="image/png"
     )

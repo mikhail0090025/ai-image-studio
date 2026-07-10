@@ -19,6 +19,8 @@ from diffusers import (
 )
 
 from simple_lama_inpainting import SimpleLama
+from global_vars import *
+from model_utils import *
 
 # Важно: указываем общий кэш HuggingFace
 CACHE_DIR = "/app/models/huggingface"
@@ -27,9 +29,7 @@ os.environ["HF_HOME"] = CACHE_DIR
 os.environ["TRANSFORMERS_CACHE"] = CACHE_DIR
 os.environ["HF_HUB_CACHE"] = CACHE_DIR
 
-
 device = "cpu"
-
 
 # -------------------------
 # Grounding DINO
@@ -46,6 +46,7 @@ model = AutoModelForZeroShotObjectDetection.from_pretrained(
 ).to(device)
 
 model.eval()
+model = quantize_model(model, "Grounding DINO")
 print("✓ Grounding DINO ready")
 
 
@@ -64,6 +65,7 @@ sam_model = SamModel.from_pretrained(
 ).to(device)
 
 sam_model.eval()
+sam_model = quantize_model(sam_model, "SAM")
 print("✓ SAM ready")
 
 # -------------------------
@@ -77,6 +79,16 @@ pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
     safety_checker=None,
     cache_dir=CACHE_DIR
 ).to(device)
+
+pipe.text_encoder = quantize_model(
+    pipe.text_encoder,
+    "Pix2Pix TextEncoder"
+)
+
+pipe.unet = quantize_model(
+    pipe.unet,
+    "Pix2Pix UNet"
+)
 
 print("✓ InstructPix2Pix ready")
 
@@ -93,6 +105,16 @@ sdxl_inpainting_pipeline = StableDiffusionInpaintPipeline.from_pretrained(
     safety_checker=None,
     cache_dir=CACHE_DIR
 ).to(device)
+
+sdxl_inpainting_pipeline.text_encoder = quantize_model(
+    sdxl_inpainting_pipeline.text_encoder,
+    "Inpainting TextEncoder"
+)
+
+sdxl_inpainting_pipeline.unet = quantize_model(
+    sdxl_inpainting_pipeline.unet,
+    "Inpainting UNet"
+)
 
 print("✓ Inpainting ready")
 
@@ -116,9 +138,48 @@ sd_turbo_pipeline = StableDiffusionPipeline.from_pretrained(
     safety_checker=None,
     cache_dir=CACHE_DIR
 )
-del sd_turbo_pipeline
+
+sd_turbo_pipeline.text_encoder = quantize_model(
+    sd_turbo_pipeline.text_encoder,
+    "SD Turbo TextEncoder"
+)
+sd_turbo_pipeline.unet = quantize_model(
+    sd_turbo_pipeline.unet,
+    "SD Turbo UNet"
+)
 
 print("✓ SD Turbo")
+
+
+# -------------------------
+# Share VAE across Stable Diffusion pipelines
+# -------------------------
+import gc
+
+try:
+    shared_vae = pipe.vae
+
+    # Assign the same VAE instance to other pipelines to avoid duplicating it in memory
+    sdxl_inpainting_pipeline.vae = shared_vae
+    # sd_turbo_pipeline.vae = shared_vae
+
+    # Ensure VAE lives on the intended device
+    try:
+        shared_vae.to(device)
+    except Exception:
+        pass
+
+    # Run GC and clear CUDA cache if available to free duplicate buffers
+    gc.collect()
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.empty_cache()
+        except Exception:
+            pass
+
+    print("✓ Shared VAE assigned to all SD pipelines")
+except Exception as exc:
+    print(f"⚠ Could not assign shared VAE: {exc}")
 
 # -------------------------
 # Mask2Former
@@ -134,89 +195,78 @@ mask_2_former_model = Mask2FormerForUniversalSegmentation.from_pretrained(
     cache_dir=CACHE_DIR
 )
 
+mask_2_former_model = quantize_model(
+    mask_2_former_model,
+    "Mask2Former"
+)
+
 print("✓ Mask2Former")
 
 '''
-def _move_to_device(batch, device_name):
-    if isinstance(batch, torch.Tensor):
-        return batch.to(device_name)
-    if isinstance(batch, dict):
-        return {key: _move_to_device(value, device_name) for key, value in batch.items()}
-    if isinstance(batch, list):
-        return [_move_to_device(value, device_name) for value in batch]
-    return batch
 
+def _compile_model_for_cpu(module, name):
+    if not hasattr(torch, "compile"):
+        print(f"⚠ {name}: torch.compile is unavailable")
+        return module
 
-def dummy_warmup():
-    print("Running dummy warmup for loaded models...")
-    dummy_image = Image.new("RGB", (512, 512), color=(255, 0, 0))
-    dummy_mask = Image.new("L", (512, 512), color=0)
+    try:
+        compiled = torch.compile(module, backend="eager")
+        compiled.eval()
+        print(f"✓ {name} compiled for CPU")
+        return compiled
+    except Exception as exc:
+        print(f"⚠ {name} CPU compile skipped: {exc}")
+        return module
 
-    with torch.inference_mode():
-        try:
-            inputs = processor(
-                images=[dummy_image],
-                text=["dummy object"],
-                return_tensors="pt",
-            )
-            model(**_move_to_device(inputs, device))
-            print("✓ Grounding DINO warmup")
-        except Exception as exc:
-            print(f"⚠ Grounding DINO warmup skipped: {exc}")
+# ============================================================
+# Stable Diffusion compilation
+# ============================================================
 
-        try:
-            sam_inputs = sam_processor(
-                images=[dummy_image],
-                input_points=[[[0.0, 0.0]]],
-                input_labels=[[1]],
-                return_tensors="pt",
-            )
-            sam_model(**_move_to_device(sam_inputs, device))
-            print("✓ SAM warmup")
-        except Exception as exc:
-            print(f"⚠ SAM warmup skipped: {exc}")
+def compile_sd_pipeline(pipe, name):
+    print(f"\nCompiling {name}...")
 
-        try:
-            pipe(
-                prompt="dummy",
-                image=dummy_image,
-                num_inference_steps=1,
-                guidance_scale=1.0,
-                output_type="pil",
-            )
-            print("✓ InstructPix2Pix warmup")
-        except Exception as exc:
-            print(f"⚠ InstructPix2Pix warmup skipped: {exc}")
+    try:
+        pipe.unet = _compile_model_for_cpu(pipe.unet, f"{name} UNet")
+    except Exception as e:
+        print(e)
 
-        try:
-            sdxl_inpainting_pipeline(
-                prompt="dummy",
-                image=dummy_image,
-                mask_image=dummy_mask,
-                num_inference_steps=1,
-                output_type="pil",
-            )
-            print("✓ SD inpainting warmup")
-        except Exception as exc:
-            print(f"⚠ SD inpainting warmup skipped: {exc}")
+    try:
+        pipe.vae = _compile_model_for_cpu(pipe.vae, f"{name} VAE")
+    except Exception as e:
+        print(e)
 
-        try:
-            if hasattr(lama, "inpaint"):
-                method = getattr(lama, "inpaint")
-                try:
-                    method(dummy_image, mask=dummy_mask)
-                except TypeError:
-                    method(dummy_image)
-            elif hasattr(lama, "forward"):
-                getattr(lama, "forward")()
-            else:
-                getattr(lama, "model", None)
-            print("✓ LaMa warmup")
-        except Exception as exc:
-            print(f"⚠ LaMa warmup skipped: {exc}")
+    try:
+        pipe.text_encoder = _compile_model_for_cpu(
+            pipe.text_encoder,
+            f"{name} TextEncoder"
+        )
+    except Exception:
+        pass
 
+    try:
+        pipe.text_encoder_2 = _compile_model_for_cpu(
+            pipe.text_encoder_2,
+            f"{name} TextEncoder2"
+        )
+    except Exception:
+        pass
 
-dummy_warmup()
+    return pipe
+
+pipe = compile_sd_pipeline(pipe, "InstructPix2Pix")
+sdxl_inpainting_pipeline = compile_sd_pipeline(
+    sdxl_inpainting_pipeline,
+    "SD Inpainting"
+)
+sd_turbo_pipeline = compile_sd_pipeline(
+    sd_turbo_pipeline,
+    "SD Turbo"
+)
+
+model = _compile_model_for_cpu(model, "Grounding DINO")
+sam_model = _compile_model_for_cpu(sam_model, "SAM")
+mask_2_former_model = _compile_model_for_cpu(mask_2_former_model, "Mask2Former")
+
 '''
 
 print("\nAll models loaded from cache.")
