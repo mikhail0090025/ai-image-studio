@@ -97,3 +97,80 @@ async def edit_object_proxy(
         resp.iter_content(chunk_size=1024),
         media_type="image/png"
     )
+
+@app.post("/change-background")
+async def change_background_proxy(
+    image: UploadFile = File(...),
+    background_prompt: str = Form(...),
+    seed: int = Form(42)
+):
+
+    files = {
+        "image": (
+            image.filename,
+            await image.read(),
+            image.content_type
+        )
+    }
+
+    data = {
+        "background_prompt": background_prompt,
+        "seed": str(seed)
+    }
+
+
+    resp = requests.post(
+        f"{AI_SERVICE_URL}/change-background",
+        files=files,
+        data=data
+    )
+
+
+    return resp.json()
+
+@app.post("/compose-background")
+async def compose_background_proxy(
+    original: UploadFile = File(...),
+    background: UploadFile = File(...),
+    mask: UploadFile = File(...),
+    blur_radius: int = Form(10)
+):
+
+    files = {
+        "original": (
+            original.filename,
+            await original.read(),
+            original.content_type
+        ),
+
+        "background": (
+            background.filename,
+            await background.read(),
+            background.content_type
+        ),
+
+        "mask": (
+            mask.filename,
+            await mask.read(),
+            mask.content_type
+        )
+    }
+
+
+    data = {
+        "blur_radius": str(blur_radius)
+    }
+
+
+    resp = requests.post(
+        f"{AI_SERVICE_URL}/compose-background",
+        files=files,
+        data=data,
+        stream=True
+    )
+
+
+    return StreamingResponse(
+        resp.iter_content(chunk_size=1024),
+        media_type="image/png"
+    )

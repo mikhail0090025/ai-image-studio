@@ -15,3 +15,8 @@ taskkill /F /IM "com.docker.backend.exe"
 Full dependencies list:
 docker exec -it ai_image_studio_ai_service pip freeze > ./ai_service/requirements.full.txt
 docker exec -it ai_image_studio_frontend pip freeze > ./frontend/requirements.full.txt
+
+Reload frontend ONLY:
+docker-compose down frontend
+docker-compose build frontend
+docker-compose up -d frontend
