@@ -159,6 +159,7 @@ input, select {
     <div>
       <button id="toolRemove" class="tool-btn active">🧹 Remove</button>
       <button id="toolEdit" class="tool-btn">✏️ Edit</button>
+      <button id="toolBackground" class="tool-btn">🌄 Background</button>
     </div>
 
     <hr>
@@ -191,6 +192,54 @@ input, select {
       <button class="run-btn" id="runEdit">Run</button>
     </div>
 
+    <div id="backgroundSettings" style="display:none">
+
+      <h3>Edit Background</h3>
+
+      <label for="backgroundPrompt">Background prompt</label>
+      <input id="backgroundPrompt" name="background_prompt" placeholder="Describe the new background" required>
+
+      <button 
+      id="segmentBtn"
+      class="run-btn"
+      disabled>
+      Segment image
+      </button>
+
+      <hr>
+
+      <label>
+      Blur transition
+      </label>
+
+      <input 
+      id="blurRadius"
+      type="range"
+      min="1"
+      max="50"
+      value="15"
+      disabled>
+
+      <span id="blurValue">
+      15
+      </span>
+
+      <button 
+      id="generateBackground"
+      class="run-btn"
+      disabled>
+      Generate
+      </button>
+
+      <div class="note">
+      Click an object mask to toggle it. Red = keep on original foreground; green = replace with new background.
+      </div>
+      <div id="selectionInfo" class="note">
+      Selected objects: 0 / 0
+      </div>
+
+    </div>
+
     <hr>
 
     <div id="engineWrap">
@@ -201,7 +250,7 @@ input, select {
       </select>
     </div>
 
-    <label>Steps</label>
+<label id="stepsLabel" for="steps">Steps</label>
     <input id="steps" type="number" value="15">
     <div id="stepsNote" class="note">More steps = higher quality, but slower.</div>
 
@@ -237,12 +286,70 @@ const editSettings = document.getElementById("editSettings");
 
 const engine = document.getElementById("engine");
 const steps = document.getElementById("steps");
+const stepsLabel = document.getElementById("stepsLabel");
 const engineWrap = document.getElementById("engineWrap");
 const stepsNote = document.getElementById("stepsNote");
+const blurRadius = document.getElementById("blurRadius");
+const blurValue = document.getElementById("blurValue");
 const processingOverlay = document.getElementById("processingOverlay");
 const processingText = document.getElementById("processingText");
 
 let isProcessing = false;
+
+let backgroundMode = false;
+
+let segmentation = null;
+let segmentsInfo = null;
+let segmentIds = new Set();
+
+let generatedBackground = null;
+
+let selectedSegments = new Set();
+
+let originalForBackground = null;
+
+const toolBackground =
+document.getElementById("toolBackground");
+
+const backgroundSettings =
+document.getElementById("backgroundSettings");
+const backgroundPromptInput = document.getElementById("backgroundPrompt");
+const segmentBtn = document.getElementById("segmentBtn");
+
+function requestNotificationPermission() {
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "default") {
+    Notification.requestPermission().catch(() => {});
+  }
+}
+
+function notifyUser(title, body) {
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  new Notification(title, {
+    body,
+    silent: false,
+  });
+}
+
+window.addEventListener("load", requestNotificationPermission);
+
+function updateBlurValue() {
+  if (!blurValue || !blurRadius) return;
+  blurValue.textContent = blurRadius.value;
+}
+
+function updateSegmentButtonState() {
+  if (!segmentBtn) return;
+  const promptValue = backgroundPromptInput?.value?.trim() ?? "";
+  segmentBtn.disabled = !promptValue;
+}
+
+backgroundPromptInput?.addEventListener("input", updateSegmentButtonState);
+blurRadius?.addEventListener("input", updateBlurValue);
+blurRadius?.addEventListener("change", updateBlurValue);
+updateSegmentButtonState();
+updateBlurValue();
 
 function setProcessing(val, text) {
   isProcessing = val;
@@ -265,9 +372,19 @@ function setProcessing(val, text) {
 }
 
 function applyEngineRules() {
-  // If we're in edit mode, hide engine choice and force SDXL
+  if (backgroundMode) {
+    if (engineWrap) engineWrap.style.display = "none";
+    if (steps) steps.style.display = "none";
+    if (stepsLabel) stepsLabel.style.display = "none";
+    if (stepsNote) stepsNote.style.display = "none";
+    return;
+  }
+
   if (toolEdit.classList.contains("active")) {
     if (engineWrap) engineWrap.style.display = "none";
+    if (steps) steps.style.display = "";
+    if (stepsLabel) stepsLabel.style.display = "";
+    if (stepsNote) stepsNote.style.display = "";
     engine.value = "sdxl";
     steps.value = 20;
     steps.disabled = false;
@@ -275,8 +392,10 @@ function applyEngineRules() {
     return;
   }
 
-  // In remove mode / normal mode, show engine and enforce LLaMA rules
   if (engineWrap) engineWrap.style.display = "";
+  if (steps) steps.style.display = "";
+  if (stepsLabel) stepsLabel.style.display = "";
+  if (stepsNote) stepsNote.style.display = "";
   if (engine.value === "lama") {
     steps.value = 1;
     steps.disabled = true;
@@ -350,7 +469,7 @@ function drawSelectionBox(rect) {
   ctx.restore();
 }
 
-function renderCurrent(rect = box) {
+function renderCurrent(rect = box, callback) {
   const img = new Image();
   img.src = history[currentIndex];
 
@@ -358,7 +477,11 @@ function renderCurrent(rect = box) {
     canvas.width = img.width;
     canvas.height = img.height;
     ctx.drawImage(img, 0, 0);
-    drawSelectionBox(rect);
+    if (callback) {
+      callback();
+    } else {
+      drawSelectionBox(rect);
+    }
   };
 
   image = img;
@@ -400,7 +523,13 @@ toolRemove.onclick = () => {
 
   removeSettings.style.display = "block";
   editSettings.style.display = "none";
+
+  backgroundSettings.style.display="none";
+  backgroundMode=false;
+  box = null;
+
   applyEngineRules();
+  renderCurrent();
 };
 
 toolEdit.onclick = () => {
@@ -410,8 +539,33 @@ toolEdit.onclick = () => {
 
   removeSettings.style.display = "none";
   editSettings.style.display = "block";
+
+  backgroundSettings.style.display="none";
+  backgroundMode=false;
+  box = null;
+
   applyEngineRules();
+  renderCurrent();
 };
+
+toolBackground.onclick = () => {
+    if (isProcessing) return;
+
+    toolBackground.classList.add("active");
+
+    toolRemove.classList.remove("active");
+    toolEdit.classList.remove("active");
+
+    removeSettings.style.display = "none";
+    editSettings.style.display = "none";
+
+    backgroundSettings.style.display = "block";
+
+    backgroundMode = true;
+    box = null;
+    applyEngineRules();
+    if (segmentation) drawSegmentation();
+}
 
 /* =========================
    BOX SELECT
@@ -429,6 +583,7 @@ function getCoords(e) {
 }
 
 canvas.addEventListener("mousedown", (e) => {
+  if (backgroundMode) return;
   const p = getCoords(e);
   startX = p.x;
   startY = p.y;
@@ -437,7 +592,7 @@ canvas.addEventListener("mousedown", (e) => {
 });
 
 canvas.addEventListener("mousemove", (e) => {
-  if (!isDrawing) return;
+  if (backgroundMode || !isDrawing) return;
 
   const p = getCoords(e);
   const previewBox = normalizeBox([
@@ -451,6 +606,7 @@ canvas.addEventListener("mousemove", (e) => {
 });
 
 canvas.addEventListener("mouseup", (e) => {
+  if (backgroundMode) return;
   const p = getCoords(e);
   isDrawing = false;
 
@@ -462,6 +618,33 @@ canvas.addEventListener("mouseup", (e) => {
   ]);
 
   renderCurrent(box);
+});
+
+canvas.addEventListener(
+"click",
+(e)=>{
+  if(!backgroundMode || !segmentation)
+    return;
+
+  const p=getCoords(e);
+  const x = Math.floor(p.x);
+  const y = Math.floor(p.y);
+
+  if (x < 0 || y < 0 || y >= segmentation.length || x >= segmentation[0].length) {
+    return;
+  }
+
+  const id = segmentation[y][x];
+  if(!id) return;
+
+  if(selectedSegments.has(id)) {
+    selectedSegments.delete(id);
+  } else {
+    selectedSegments.add(id);
+  }
+
+  updateSelectionInfo();
+  drawSegmentation();
 });
 
 /* =========================
@@ -539,8 +722,10 @@ document.getElementById("runRemove").onclick = async () => {
   try {
     setProcessing(true, 'Processing image');
     await sendRequest("/api/remove-object", form);
+    notifyUser("Object removed", "The object has been removed successfully.");
   } catch (e) {
     console.error(e);
+    notifyUser("Remove failed", "The object removal did not complete successfully.");
   } finally {
     setProcessing(false);
   }
@@ -566,10 +751,100 @@ document.getElementById("runEdit").onclick = async () => {
   try {
     setProcessing(true, 'Processing image');
     await sendRequest("/api/edit-object", form);
+    notifyUser("Edit complete", "Your image edit has finished.");
   } catch (e) {
     console.error(e);
+    notifyUser("Edit failed", "The image edit did not complete successfully.");
   } finally {
     setProcessing(false);
+  }
+};
+
+document.getElementById("segmentBtn").onclick = async ()=>{
+  if(isProcessing)
+  return;
+
+  const imageData =
+  await getCurrentImageDataURL();
+
+  const backgroundPromptInput = document.getElementById("backgroundPrompt");
+  if (!backgroundPromptInput) {
+    console.error("Missing backgroundPrompt input");
+    return;
+  }
+
+  const backgroundPrompt = backgroundPromptInput.value || "";
+
+  const form = new FormData();
+
+  form.append(
+  "image",
+  dataURLtoFile(
+  imageData,
+  "image.png"
+  )
+  );
+
+  form.append("background_prompt", backgroundPrompt);
+  console.debug("change-background form entries", Array.from(form.entries()));
+
+  try{
+
+  setProcessing(true,"Segmenting image");
+
+  const res =
+  await fetch(
+  "/change-background",
+  {
+  method:"POST",
+  body:form
+  });
+
+  const data =
+  await res.json();
+
+  segmentation =
+  data.segmentation;
+
+  segmentsInfo =
+  data.segments_info;
+
+  generatedBackground =
+  data.background;
+
+  originalForBackground =
+  data.original;
+
+  segmentIds = collectSegmentIds(segmentation);
+  selectedSegments = new Set(segmentIds);
+  updateSelectionInfo();
+
+  document.getElementById(
+  "segmentBtn"
+  ).disabled=true;
+
+
+  document.getElementById(
+  "generateBackground"
+  ).disabled=false;
+
+
+  document.getElementById(
+  "blurRadius"
+  ).disabled=false;
+
+  drawSegmentation();
+  notifyUser("Segmentation ready", "Segmentation is complete. Click objects to choose what stays or moves.");
+
+  }
+  catch(e)
+  {
+  console.error(e);
+  notifyUser("Segmentation failed", "Could not complete segmentation. Please try again.");
+  }
+
+  finally{
+  setProcessing(false);
   }
 };
 
@@ -587,6 +862,260 @@ function dataURLtoFile(dataurl, filename) {
   while (n--) u8arr[n] = bstr.charCodeAt(n);
 
   return new File([u8arr], filename, { type: mime });
+}
+
+function collectSegmentIds(seg) {
+  const ids = new Set();
+  for (let y = 0; y < seg.length; y++) {
+    for (let x = 0; x < seg[0].length; x++) {
+      const id = seg[y][x];
+      if (id) ids.add(id);
+    }
+  }
+  return ids;
+}
+
+function updateSelectionInfo() {
+  const info = document.getElementById("selectionInfo");
+  if (!info) return;
+  info.textContent = `Selected objects: ${selectedSegments.size} / ${segmentIds.size}`;
+}
+
+function drawSegmentation(){
+  if(!segmentation || !segmentation.length || !segmentation[0] || !segmentation[0].length) {
+    renderCurrent();
+    return;
+  }
+
+  renderCurrent(undefined, () => {
+    const width = canvas.width;
+    const height = canvas.height;
+
+    // Draw a soft green tint over the whole image initially.
+    ctx.fillStyle = 'rgba(0, 255, 0, 0.12)';
+    ctx.fillRect(0, 0, width, height);
+
+    // Create an offscreen canvas for the mask so we can composite it
+    // over the already-drawn image (putImageData directly on the
+    // main context would overwrite pixels rather than blend).
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = width;
+    maskCanvas.height = height;
+    const mctx = maskCanvas.getContext('2d');
+
+    const overlay = mctx.createImageData(width, height);
+    const pixels = overlay.data;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const id = segmentation[y] && segmentation[y][x];
+        if (!id) continue;
+
+        const idx = (y * width + x) * 4;
+        if (selectedSegments.has(id)) {
+          pixels[idx] = 0;
+          pixels[idx + 1] = 255;
+          pixels[idx + 2] = 0;
+          pixels[idx + 3] = 110;
+        } else {
+          pixels[idx] = 255;
+          pixels[idx + 1] = 0;
+          pixels[idx + 2] = 0;
+          pixels[idx + 3] = 120;
+        }
+      }
+    }
+
+    mctx.putImageData(overlay, 0, 0);
+    // Draw the mask canvas on top of the main canvas so alpha-blending
+    // is performed by the canvas compositor and the underlying image
+    // remains visible.
+    ctx.drawImage(maskCanvas, 0, 0);
+    drawSelectionBox(box);
+  });
+}
+
+document.getElementById(
+"generateBackground"
+).onclick = async ()=>{
+  if(!segmentation) return;
+
+
+const maskCanvas =
+document.createElement("canvas");
+
+
+maskCanvas.width =
+segmentation[0].length;
+
+
+maskCanvas.height =
+segmentation.length;
+
+
+const mctx =
+maskCanvas.getContext("2d");
+
+
+
+const imgData =
+mctx.createImageData(
+maskCanvas.width,
+maskCanvas.height
+);
+
+
+
+for(
+let y=0;
+y<segmentation.length;
+y++
+){
+
+for(
+let x=0;
+x<segmentation[0].length;
+x++
+){
+
+const idx =
+(y*maskCanvas.width+x)*4;
+
+
+let value =
+selectedSegments.has(
+segmentation[y][x]
+)
+?
+255
+:
+0;
+
+
+imgData.data[idx]=value;
+imgData.data[idx+1]=value;
+imgData.data[idx+2]=value;
+imgData.data[idx+3]=255;
+
+}
+
+}
+
+
+mctx.putImageData(
+imgData,
+0,
+0
+);
+
+
+
+const form =
+new FormData();
+
+
+form.append(
+"original",
+dataURLtoFile(
+originalForBackground,
+"original.png"
+)
+);
+
+
+form.append(
+"background",
+base64toFile(
+generatedBackground,
+"background.png"
+)
+);
+
+
+form.append(
+"mask",
+await canvasToFile(
+maskCanvas,
+"mask.png"
+)
+);
+
+
+
+form.append(
+"blur_radius",
+document.getElementById(
+"blurRadius"
+).value
+);
+
+
+
+setProcessing(
+true,
+"Applying background"
+);
+
+
+try{
+
+await sendRequest(
+"/compose-background",
+form
+);
+  notifyUser("Background updated", "The background replacement finished successfully.");
+
+  }
+  catch (e) {
+    console.error(e);
+    notifyUser("Background failed", "The background update did not complete successfully.");
+  }
+  finally {
+    setProcessing(false);
+  }
+};
+
+function canvasToFile(canvas,name){
+
+return new Promise(resolve=>{
+
+canvas.toBlob(
+blob=>resolve(
+new File(
+[blob],
+name,
+{
+type:"image/png"
+}
+)
+)
+);
+
+});
+
+}
+
+function base64toFile(base64,name){
+
+let arr=base64.split(",");
+
+let bstr=atob(arr[1]);
+
+let u8=new Uint8Array(bstr.length);
+
+for(let i=0;i<bstr.length;i++)
+{
+u8[i]=bstr.charCodeAt(i);
+}
+
+return new File(
+[u8],
+name,
+{
+type:"image/png"
+}
+);
+
 }
 </script>
 {% endblock %}

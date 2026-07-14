@@ -1,7 +1,8 @@
 import os
 
 from PIL import Image
-from scipy import io
+# from scipy import io
+import io
 import torch
 import torchvision.transforms.functional as TF
 import matplotlib.pyplot as plt
@@ -1009,13 +1010,20 @@ def prepare_background_and_segmentation(
     image_path: str,
     background_prompt: str,
     seed: int = 42
-) -> tuple[Image.Image, Image.Image, np.ndarray, list]:
+):
     print(f"Processing image: {image_path}")
+
     original_pil_image = Image.open(image_path).convert("RGB")
     target_width, target_height = original_pil_image.size
 
+    # ----------------------------------------------------
+    # Generate background
+    # ----------------------------------------------------
+
     print("Generating background...")
+
     gen_w, gen_h = 512, 512
+
     generator = torch.Generator(device=device).manual_seed(seed)
 
     gen_bg = sd_turbo_pipeline(
@@ -1040,52 +1048,51 @@ def prepare_background_and_segmentation(
             top = (gen_h - new_h) / 2
             gen_bg = gen_bg.crop((0, top, gen_w, top + new_h))
 
-    processed_bg = gen_bg.resize((target_width, target_height), Image.LANCZOS)
+    processed_bg = gen_bg.resize(
+        (target_width, target_height),
+        Image.LANCZOS
+    )
 
-    print("Running Mask2Former segmentation (optimized resize)...")
-    # Resize so longest side is 512px
-    max_side = 512
-    if max(target_width, target_height) > max_side:
-        scale = max_side / max(target_width, target_height)
-        low_res_size = (int(target_width * scale), int(target_height * scale))
-        seg_input_image = original_pil_image.resize(low_res_size, Image.BILINEAR)
+    # ----------------------------------------------------
+    # Mask2Former
+    # ----------------------------------------------------
+
+    print("Running Mask2Former...")
+
+    if max(target_width, target_height) > MAX_MASK2FORMER_SIZE:
+        scale = MAX_MASK2FORMER_SIZE / max(target_width, target_height)
+
+        low_res_size = (
+            int(target_width * scale),
+            int(target_height * scale)
+        )
+
+        seg_input = original_pil_image.resize(
+            low_res_size,
+            Image.BILINEAR
+        )
     else:
-        seg_input_image = original_pil_image
+        seg_input = original_pil_image
 
-    inputs = processor(images=seg_input_image, return_tensors="pt").to(device)
+    inputs = mask_2_former_processor(
+        images=seg_input,
+        return_tensors="pt"
+    ).to(device)
+
     with torch.no_grad():
-        outputs = model(**inputs)
+        outputs = mask_2_former_model(**inputs)
 
-    # Post-process resizes the segmentation back to the original target_size
-    result = processor.post_process_instance_segmentation(outputs, target_sizes=[original_pil_image.size[::-1]])[0]
+    result = mask_2_former_processor.post_process_instance_segmentation(
+        outputs,
+        target_sizes=[original_pil_image.size[::-1]]
+    )[0]
 
-    return original_pil_image, processed_bg, result["segmentation"].cpu().numpy(), result["segments_info"]
+    segmentation = result["segmentation"].cpu().numpy()
+    segments_info = result["segments_info"]
 
-def apply_segmentation_mask_and_composite(
-    original_img: Image.Image,
-    background_img: Image.Image,
-    segmentation: np.ndarray,
-    segments_info: list,
-    target_class_ids: list[int],
-    blur_radius: int = 5
-) -> Image.Image:
-    print(f"Creating mask for class IDs: {target_class_ids}")
-    mask_array = np.zeros(segmentation.shape, dtype=np.uint8)
-
-    for segment in segments_info:
-        if segment["label_id"] in target_class_ids:
-            mask_array[segmentation == segment["id"]] = 255
-
-    if blur_radius > 0:
-        k_size = blur_radius * 2 + 1
-        mask_array = cv2.GaussianBlur(mask_array, (k_size, k_size), 0)
-
-    mask_image = Image.fromarray(mask_array)
-    final_image = Image.composite(original_img, background_img, mask_image)
-
-    plt.figure(figsize=(12, 6))
-    plt.subplot(1, 2, 1); plt.imshow(mask_image, cmap='gray'); plt.title("Mask"); plt.axis("off")
-    plt.subplot(1, 2, 2); plt.imshow(final_image); plt.title("Final Result"); plt.axis("off")
-    plt.show()
-
-    return final_image
+    return (
+        original_pil_image,
+        processed_bg,
+        segmentation,
+        segments_info
+    )

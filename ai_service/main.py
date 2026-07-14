@@ -1,12 +1,13 @@
+import base64
 import json
 import tempfile
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile, File
-from PIL import Image
+from PIL import Image, ImageFilter, ImageOps
 import io
 
-from fastapi.responses import StreamingResponse
-from utils import TARGET_SIZE, edit_image_with_manual_box, edit_image, remove_object, remove_object_manual_box, detect_and_segment, preprocess_image, resize_mask, restore_patch, calculate_dilation
+from fastapi.responses import StreamingResponse, JSONResponse
+from utils import *
 
 app = FastAPI(
     title="AI Image Studio",
@@ -226,6 +227,17 @@ async def edit_object_endpoint(
         media_type="image/png",
     )
 
+def image_to_base64(img):
+
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+
+    encoded = base64.b64encode(
+        buffer.getvalue()
+    ).decode()
+
+    return "data:image/png;base64," + encoded
+
 @app.post("/change-background")
 async def change_background(
     image: UploadFile = File(...),
@@ -233,11 +245,13 @@ async def change_background(
     seed: int = Form(42)
 ):
     """
-    Replace image background using Stable Diffusion + Mask2Former
+    Generates a new background and returns:
+    - original image
+    - generated background
+    - segmentation map
+    - segments metadata
     """
 
-    # сохраняем временный файл,
-    # потому что твой pipeline принимает image_path
     image_bytes = await image.read()
 
     with tempfile.NamedTemporaryFile(
@@ -248,36 +262,111 @@ async def change_background(
         tmp.write(image_bytes)
         image_path = tmp.name
 
+    try:
 
-    # -----------------------------
-    # Generate background + segmentation
-    # -----------------------------
+        original_img, background_img, segmentation, segments_info = (
+            prepare_background_and_segmentation(
+                image_path=image_path,
+                background_prompt=background_prompt,
+                seed=seed
+            )
+        )
 
-    original_img, background_img, segmentation, segments_info = (
-        prepare_background_and_segmentation(
-            image_path=image_path,
-            background_prompt=background_prompt,
-            seed=seed
+        print(f"Original image size: {original_img.size}, background image size: {background_img.size}")
+
+        response = {
+                "original": image_to_base64(original_img),
+                "background": image_to_base64(background_img),
+                "segmentation": segmentation.tolist(),
+                "segments_info": segments_info
+            }
+
+        print("Response size:", len(json.dumps(response)), "bytes")
+        print("Response size:", len(json.dumps(response)) / 1024 / 1024, "MB")
+
+        return JSONResponse(
+            {
+                "original": image_to_base64(original_img),
+                "background": image_to_base64(background_img),
+                "segmentation": segmentation.tolist(),
+                "segments_info": segments_info
+            }
+        )
+
+    finally:
+        if os.path.exists(image_path):
+            os.remove(image_path)
+
+@app.post("/compose-background")
+async def compose_background(
+    original: UploadFile = File(...),
+    background: UploadFile = File(...),
+    mask: UploadFile = File(...),
+    blur_radius: int = Form(10)
+):
+
+    # читаем изображения
+
+    original_bytes = await original.read()
+    background_bytes = await background.read()
+    mask_bytes = await mask.read()
+
+
+    original_img = Image.open(
+        io.BytesIO(original_bytes)
+    ).convert("RGBA")
+
+
+    background_img = Image.open(
+        io.BytesIO(background_bytes)
+    ).convert("RGBA")
+
+
+    mask_img = Image.open(
+        io.BytesIO(mask_bytes)
+    ).convert("L")
+
+    mask_img = ImageOps.invert(mask_img)
+
+    # проверяем размеры
+
+    if original_img.size != background_img.size:
+        raise Exception(
+            "Images sizes must match"
+        )
+
+
+    if mask_img.size != original_img.size:
+        raise Exception(
+            "Mask size must match"
+        )
+
+
+    #
+    # Размываем границу маски
+    #
+
+    mask_img = mask_img.filter(
+        ImageFilter.GaussianBlur(
+            radius=blur_radius
         )
     )
 
 
-    # -----------------------------
-    # Apply mask and composite
-    # -----------------------------
+    #
+    # Берем объекты с оригинала
+    #
 
-    result = apply_segmentation_mask_and_composite(
-        original_img=original_img,
-        background_img=background_img,
-        segmentation=segmentation,
-        segments_info=segments_info,
-        target_class_ids=[0]
+    result = Image.composite(
+        original_img,
+        background_img,
+        mask_img
     )
 
 
-    # -----------------------------
-    # Return image
-    # -----------------------------
+    #
+    # возвращаем PNG
+    #
 
     output = io.BytesIO()
 
