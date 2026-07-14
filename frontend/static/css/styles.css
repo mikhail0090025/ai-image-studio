@@ -3,26 +3,65 @@ body {
   font-family: Arial, sans-serif;
   background: #0f1115;
   color: white;
+  min-height: 100vh;
+  overflow-x: hidden;
 }
 
 /* HEADER */
 .header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 24px;
+  padding: 16px 28px;
   border-bottom: 1px solid #222;
+  background: rgba(15,17,21,0.96);
+  backdrop-filter: blur(12px);
+  z-index: 100;
 }
 
 .logo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
 }
 
 .logo img {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  filter: drop-shadow(0 0 12px rgba(79,124,255,0.35));
+}
+
+.brand {
+  display: block;
+  font-size: 1.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  background: linear-gradient(90deg, #56c4ff, #ab6bff, #ff7fb6);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: shimmer 4s ease infinite;
+  transition: transform 0.25s ease, text-shadow 0.25s ease;
+}
+
+.brand:hover {
+  transform: scale(1.02);
+  text-shadow: 0 0 18px rgba(96,201,255,0.55);
+}
+
+.brand-subtitle {
+  color: #9fa4b0;
+  font-size: 0.85rem;
+}
+
+@keyframes shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
 }
 
 .nav a {
@@ -38,8 +77,8 @@ body {
 /* MAIN */
 .container {
   max-width: 900px;
-  margin: 40px auto;
-  padding: 0 20px;
+  margin: 0 auto;
+  padding: 100px 20px 20px;
 }
 
 /* FOOTER */

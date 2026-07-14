@@ -2,6 +2,53 @@
 
 {% block title %}Upload - AI Image Studio{% endblock %}
 
+{% block head %}
+<style>
+#dropZone {
+  width: min(640px, calc(100vw - 40px));
+  margin: 0 auto;
+  padding: 40px 22px;
+  border: 2px dashed rgba(255,255,255,0.1);
+  border-radius: 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(255,255,255,0.02);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
+  text-align: center;
+}
+
+.drop-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+#preview {
+  max-width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  border-radius: 18px;
+  display: block;
+}
+
+#continueBtn {
+  width: min(280px, 100%);
+  display: block;
+  margin: 24px auto 0;
+}
+
+#dropZone p {
+  margin: 0;
+  color: #bbb;
+  font-size: 1rem;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 
 <h1>Upload image</h1>
@@ -19,7 +66,7 @@
   <img id="preview" class="preview hidden" />
 </div>
 
-<button id="continueBtn" disabled style="margin-top:20px;width:100%">
+<button id="continueBtn" disabled>
   Continue
 </button>
 
