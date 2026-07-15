@@ -291,7 +291,13 @@ def segment_object(image, box):
     else:
         box = torch.tensor(box, dtype=torch.float32)
 
-    x1, y1, x2, y2 = box.tolist()
+    print("box.tolist(): ", box.tolist())
+
+    if len(box.tolist()) == 1:
+        x1, y1, x2, y2 = box.tolist()[0]
+    else:
+        x1, y1, x2, y2 = box.tolist()
+
     scale_x = SAM_SIZE / original_size[0]
     scale_y = SAM_SIZE / original_size[1]
 

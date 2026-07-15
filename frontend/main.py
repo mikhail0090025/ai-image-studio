@@ -72,8 +72,14 @@ async def edit_object_proxy(
     strength: float = Form(1.5),
     steps: int = Form(25),
 ):
+    image_bytes = await image.read()
+
     files = {
-        "image": (image.filename, await image.read(), image.content_type)
+        "image": (
+            image.filename,
+            image_bytes,
+            image.content_type
+        )
     }
 
     data = {
@@ -86,12 +92,37 @@ async def edit_object_proxy(
         "steps": str(steps),
     }
 
+    print("\n========== EDIT OBJECT REQUEST ==========")
+
+    print("\nFILES:")
+    print(f"filename      : {image.filename}")
+    print(f"content_type  : {image.content_type}")
+    print(f"image size    : {len(image_bytes)} bytes")
+
+    print("\nFORM DATA:")
+    for k, v in data.items():
+        print(f"{k}: {repr(v)}")
+
+    print("\n=========================================\n")
+
     resp = requests.post(
         f"{AI_SERVICE_URL}/edit-object",
         files=files,
         data=data,
         stream=True
     )
+
+    print("\n========== AI RESPONSE ==========")
+    print("Status:", resp.status_code)
+    print("Headers:", resp.headers)
+
+    if resp.status_code != 200:
+        try:
+            print("Body:", resp.json())
+        except Exception:
+            print("Body:", resp.text)
+
+    print("=================================\n")
 
     return StreamingResponse(
         resp.iter_content(chunk_size=1024),
