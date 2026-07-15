@@ -105,7 +105,7 @@ sdxl_inpainting_pipeline = StableDiffusionInpaintPipeline.from_pretrained(
     safety_checker=None,
     cache_dir=CACHE_DIR
 ).to(device)
-
+'''
 sdxl_inpainting_pipeline.text_encoder = quantize_model(
     sdxl_inpainting_pipeline.text_encoder,
     "Inpainting TextEncoder"
@@ -115,6 +115,7 @@ sdxl_inpainting_pipeline.unet = quantize_model(
     sdxl_inpainting_pipeline.unet,
     "Inpainting UNet"
 )
+'''
 
 print("✓ Inpainting ready")
 
@@ -150,7 +151,7 @@ sd_turbo_pipeline.unet = quantize_model(
 
 print("✓ SD Turbo")
 
-
+'''
 # -------------------------
 # Share VAE across Stable Diffusion pipelines
 # -------------------------
@@ -180,6 +181,7 @@ try:
     print("✓ Shared VAE assigned to all SD pipelines")
 except Exception as exc:
     print(f"⚠ Could not assign shared VAE: {exc}")
+'''
 
 # -------------------------
 # Mask2Former

@@ -5,3 +5,8 @@ ai_service/.bash_history
 /ai_service/models
 __pycache__
 .env
+ai_service/blended_image_np.png
+ai_service/debug/generated_512.png
+ai_service/debug/mask_original.png
+ai_service/generated_patch.png
+ai_service/result512.png

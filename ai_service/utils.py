@@ -572,7 +572,7 @@ def remove_object(
                 mask_image=Image.fromarray(mask),
                 num_inference_steps=steps,
                 guidance_scale=7.5,
-                strength=1.0
+                strength=0.9
             ).images[0]
 
         if DEBUG_VIS:
