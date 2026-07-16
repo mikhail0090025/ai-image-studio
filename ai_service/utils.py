@@ -1032,13 +1032,30 @@ def prepare_background_and_segmentation(
 
     generator = torch.Generator(device=device).manual_seed(seed)
 
+    prompt = f"""
+        Photorealistic background.
+        Professional photography.
+        RAW DSLR photo.
+        Natural lighting.
+        Highly detailed.
+        Realistic textures.
+
+        Scene:
+        {background_prompt}
+        """
+
+    negative_prompt = """
+cartoon, anime, painting, drawing, illustration, cgi, 3d, render, low quality, blurry, deformed
+"""
+
     gen_bg = sd_turbo_pipeline(
-        prompt=background_prompt,
+        prompt=prompt,
+        negative_prompt=negative_prompt,
         height=gen_h,
         width=gen_w,
-        num_inference_steps=2,
+        num_inference_steps=4,
         guidance_scale=1.0,
-        generator=generator
+        # generator=generator
     ).images[0]
 
     target_ratio = target_width / target_height
