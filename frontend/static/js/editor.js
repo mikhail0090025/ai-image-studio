@@ -158,13 +158,17 @@ document.getElementById("runEdit").onclick = async () => {
   const form = new FormData();
   form.append("image", dataURLtoFile(image.src, "img.png"));
 
-  const prompt = document.getElementById("editPrompt").value;
+  const editPromptValue = document.getElementById("editPrompt").value.trim();
 
-  if (!editAutoDetect.checked && box) {
+  if (editAutoDetect.checked && editPromptValue) {
+    form.append("prompt", editPromptValue);
+  } else if (box) {
     form.append("box", JSON.stringify(box));
+  } else if (editPromptValue) {
+    form.append("prompt", editPromptValue);
   }
 
-  form.append("edit_prompt", prompt);
+  form.append("edit_prompt", editPromptValue);
 
   form.append("engine", engine.value);
   form.append("steps", engine.value === "llama" ? 1 : steps.value);

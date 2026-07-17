@@ -82,9 +82,15 @@ async def edit_object_proxy(
         )
     }
 
+    prompt_value = prompt.strip() if prompt else None
+    box_value = box.strip() if box else None
+
+    if not prompt_value and not box_value and edit_prompt:
+        prompt_value = edit_prompt.strip()
+
     data = {
-        "prompt": prompt,
-        "box": box,
+        "prompt": prompt_value,
+        "box": box_value,
         "edit_prompt": edit_prompt,
         "negative_prompt": negative_prompt,
         "guidance_scale": str(guidance_scale),
